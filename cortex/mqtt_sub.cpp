@@ -10,6 +10,7 @@
 
 #include "driver.hpp"
 #include "steering.hpp"
+#include "types.hpp"
 
 
 void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *str)
@@ -66,10 +67,27 @@ int mqtt_send(char *msg){
 void my_message_callback(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *message)
 {
 	if(message->payloadlen){
-		//char *topics = message->topic;
-		//printf("toppihsdvcxz:%s",topics);
-		if(strcmp(message->topic , "/controller/steering")!=0) {printf("Fahren\n");}
-		printf("%s %s\n", message->topic, message->payload);
+		
+		if(strcmp(message->topic , "/controller/motor")!=0) driver.drive(int(message->payload));
+		if(strcmp(message->topic, "/controller/steering")!=0) steering.steer(i8(message->payload));
+		//printf("%s %s\n", message->topic, message->payload);
 	}else{
 		printf("%s (null)\n", message->topic);
 	}
+		fflush(stdout);
+}
+
+int main(int argc, char *argv[])
+{
+  mqtt_setup();
+	
+  int i = -1000;
+  char *buf = malloc(64);
+  int subs0 = mosquitto_subscribe(mosq,NULL,"/controller/motor",0);
+  int subs1 = mosquitto_subscribe(mosq,NULL,"/controller/steering",0);
+  
+  while(1){
+
+    mosquitto_message_callback_set(mosq, my_message_callback);
+  }
+}
