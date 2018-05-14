@@ -15,7 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #define PORT 1111
-#define IPADDRESS 127.0.0.1
+#define HOST localhost
 
 void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -38,7 +38,7 @@ struct mosquitto *mosq = NULL;
 char *topic = NULL;
 void mqtt_setup(){
 
-	char *host = "localhost";
+	char *host = "HOST";
 	int port = PORT;
 	int keepalive = 60;
 	bool clean_session = true;
