@@ -76,8 +76,8 @@ int main()
 	io_context ioctx;
 
 	Controller ctrl(ioctx, "/dev/input/js0");
-	Driver driver(ioctx, "/dev/ttyACM0");
-	Steering steering(ioctx);
+	//Driver driver(ioctx, "/dev/ttyACM0");
+	//Steering steering(ioctx);
 
 	ctrl.on_axis = [&](u32, Controller::Axis num, i16 val)
 	{
