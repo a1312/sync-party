@@ -9,124 +9,70 @@
 
 #include <fmt/format.h>
 //MQTT include
-#include <iomanip>
-#include <map>
-
-#include <boost/lexical_cast.hpp>
-
-#include <mqtt_client_cpp.hpp>
-
+#include <stdio.h>
+#include <mosquitto.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #define PORT 1111
 #define IPADDRESS 127.0.0.1
+
+void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *str)
+{
+	/* Pring all log messages regardless of level. */
+  
+  switch(level){
+    //case MOSQ_LOG_DEBUG:
+    //case MOSQ_LOG_INFO:
+    //case MOSQ_LOG_NOTICE:
+    case MOSQ_LOG_WARNING:
+    case MOSQ_LOG_ERR: {
+      printf("%i:%s\n", level, str);
+    }
+  }
+  
+	
+}
+
+struct mosquitto *mosq = NULL;
+char *topic = NULL;
+void mqtt_setup(){
+
+	char *host = "localhost";
+	int port = PORT;
+	int keepalive = 60;
+	bool clean_session = true;
+  topic = "/motor";
+  
+  mosquitto_lib_init();
+  mosq = mosquitto_new(NULL, clean_session, NULL);
+  if(!mosq){
+		fprintf(stderr, "Error: Out of memory.\n");
+		exit(1);
+	}
+  
+  mosquitto_log_callback_set(mosq, mosq_log_callback);
+  
+  if(mosquitto_connect(mosq, host, port, keepalive)){
+		fprintf(stderr, "Unable to connect.\n");
+		exit(1);
+	}
+  int loop = mosquitto_loop_start(mosq);
+  if(loop != MOSQ_ERR_SUCCESS){
+    fprintf(stderr, "Unable to start loop: %i\n", loop);
+    exit(1);
+  }
+}
+
+int mqtt_send(char *msg){
+  return mosquitto_publish(mosq, NULL, topic, strlen(msg), msg, 0, 0);
+}
 
 int main()
 {
 	//MQTT
-	boost::asio::io_service ios;
+	mqtt_setup();
 	
-	std::uint16_t pid_sub1;
-    	std::uint16_t pid_sub2;
-	int count;
-	
-	auto c = mqtt::make_client(ios, PORT, boost::lexical_cast<std::uint16_t>(IPADDRESS));
-	
-	auto disconnect = [&] {
-        if (++count == 5) c->disconnect();
-        };
-	
-	 // Setup client
-        c->set_client_id("cid1");
-        c->set_clean_session(true);
-	
-	// Setup handlers
-    c->set_connack_handler(
-        [&c, &pid_sub1, &pid_sub2]
-        (bool sp, std::uint8_t connack_return_code){
-            std::cout << "Connack handler called" << std::endl;
-            std::cout << "Clean Session: " << std::boolalpha << sp << std::endl;
-            std::cout << "Connack Return Code: "
-                      << mqtt::connect_return_code_to_str(connack_return_code) << std::endl;
-            if (connack_return_code == mqtt::connect_return_code::accepted) {
-                pid_sub1 = c->subscribe("mqtt_client_cpp/topic1", mqtt::qos::at_most_once);
-                pid_sub2 = c->subscribe("mqtt_client_cpp/topic2_1", mqtt::qos::at_least_once,
-                                       "mqtt_client_cpp/topic2_2", mqtt::qos::exactly_once);
-            }
-            return true;
-        });
-    c->set_close_handler(
-        []
-        (){
-            std::cout << "closed." << std::endl;
-        });
-    c->set_error_handler(
-        []
-        (boost::system::error_code const& ec){
-            std::cout << "error: " << ec.message() << std::endl;
-        });
-    c->set_puback_handler(
-        [&]
-        (std::uint16_t packet_id){
-            std::cout << "puback received. packet_id: " << packet_id << std::endl;
-            disconnect();
-            return true;
-        });
-    c->set_pubrec_handler(
-        []
-        (std::uint16_t packet_id){
-            std::cout << "pubrec received. packet_id: " << packet_id << std::endl;
-            return true;
-        });
-    c->set_pubcomp_handler(
-        [&]
-        (std::uint16_t packet_id){
-            std::cout << "pubcomp received. packet_id: " << packet_id << std::endl;
-            disconnect();
-            return true;
-        });
-    c->set_suback_handler(
-        [&]
-        (std::uint16_t packet_id, std::vector<boost::optional<std::uint8_t>> results){
-            std::cout << "suback received. packet_id: " << packet_id << std::endl;
-            for (auto const& e : results) {
-                if (e) {
-                    std::cout << "subscribe success: " << mqtt::qos::to_str(*e) << std::endl;
-                }
-                else {
-                    std::cout << "subscribe failed" << std::endl;
-                }
-            }
-            if (packet_id == pid_sub1) {
-                c->publish_at_most_once("mqtt_client_cpp/topic1", "test1");
-            }
-            else if (packet_id == pid_sub2) {
-                c->publish_at_least_once("mqtt_client_cpp/topic2_1", "test2_1");
-                c->publish_exactly_once("mqtt_client_cpp/topic2_2", "test2_2");
-            }
-            return true;
-        });
-    c->set_publish_handler(
-        [&]
-        (std::uint8_t header,
-         boost::optional<std::uint16_t> packet_id,
-         std::string topic_name,
-         std::string contents){
-            std::cout << "publish received. "
-                      << "dup: " << std::boolalpha << mqtt::publish::is_dup(header)
-                      << " pos: " << mqtt::qos::to_str(mqtt::publish::get_qos(header))
-                      << " retain: " << mqtt::publish::is_retain(header) << std::endl;
-            if (packet_id)
-                std::cout << "packet_id: " << *packet_id << std::endl;
-            std::cout << "topic_name: " << topic_name << std::endl;
-            std::cout << "contents: " << contents << std::endl;
-            disconnect();
-            return true;
-        });
-
-    // Connect
-    //c->connect();
-
-    //ios.run();
-	//MQTT
 	io_context ioctx;
 
 	Controller ctrl(ioctx, "/dev/input/js0");
@@ -169,7 +115,9 @@ int main()
 			{
 				speed_prev = speed;
 				fmt::print("MOTOR: {:5} => {:02x}\n", input, speed);
-				driver.drive(speed);
+				//publish MQTT speed
+				mosquitto_publish(mosq,NULL,"/motor",strlen(speed),speed,0,0);
+				//driver.drive(speed);
 			}
 		}
 
@@ -180,7 +128,9 @@ int main()
 		if(steer_input_prev != steer)
 		{
 			steer_input_prev = steer;
-			steering.steer(steer);
+			//publish MQTT steering
+			mosquitto_publish(mosq,NULL,"/steering",strlen(steer),steer,0,0);
+			//steering.steer(steer);
 		}
 	};
 
